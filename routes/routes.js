@@ -1,4 +1,5 @@
 var appRouter = function(app, mongoOp, http) {
+  var path = "C:/Users/marco/Documents/GitHub/sisTecWeb-p5/tmp/";
 
   ////////////////////////////////////////////////
   ////////////////API
@@ -60,18 +61,24 @@ var appRouter = function(app, mongoOp, http) {
   /*
   Get a memo
   */
-  app.get("/api/memo/:userName/:idMemo", function(req, res) {
+  app.get("/api/memo/:idMemo", function(req, res) {
     console.log("GET /api/memo was called. ");
     var response = {};
-    mongoOp.findOne({username : req.params.userName}, function(err, data){
+    mongoOp.findOne({memos: {$elemMatch: {_id: req.params.idMemo}}}, function(err, data){
       if(err){
-        response = {"error" : true,"message" : "Error adding data"};
-        res.json(response);
+        response = {"error" : true, "message" : "Note not found"}
       }else{
-        response = {"error" : true,"message" : "Not implemented"};
-        res.json(response);
+        var memos = data.memos;
+        for(i = 0; i < memos.length; i++){
+          var myMemo;
+          idString = memos[i]._id.toString();
+          if(idString==req.params.idMemo){
+            myMemo = memos[i];
+          }
+        }
+        response = {"error" : false, "message" : myMemo}
       }
-
+      res.json(response);
     });
   });
 
@@ -93,31 +100,52 @@ var appRouter = function(app, mongoOp, http) {
     .createHash('sha1')
     .update(req.body.password)
     .digest('base64');
-
     mongoOp.findOne({username: req.body.username, password: db.password},function(err,data){
       // Mongo command to fetch all data from collection.
+
       if(err) {
         response = {"error" : true,"message" : "Error fetching data"};
         res.json(response);
       } else {
-        //console.log(data);
+        var formidable = require("formidable");
+        var fs = require('fs');
+        var form = new formidable.IncomingForm();
         var memo = {text: req.body.text, date: req.body.date};
-        mongoOp.update(data, {$push: {memos: memo}},  { upsert: true }, function(err, user){
-          if(err){
-            res.send(err);
-          } else {
-            //return res.json(user);
-            //It returns user updated
-            mongoOp.findOne({'username': db.username, 'password': db.password},function(err,data){
-              if(err) {
-                response = {"error" : true,"message" : "Error updating data"};
-              } else {
-                console.log(data);
-                response = {"error" : false,"message" : data};
-              }
-              res.json(response);
-            });
-          }
+      	form.parse(req, function(error, fields, files) {
+          console.log("llego aqui");
+      		//If there are a file it will save it
+      		var route = "";
+      		if(typeof files.file !== 'undefined'){
+      			if(files.file.name != ''){
+      				route = path + files.file.name;
+      				/* Possible error on Windows systems:
+      				tried to rename to an already existing file */
+      				fs.rename(files.file.path, route, function(error) {
+      					if (error) {
+      						fs.unlink(route);
+      						fs.rename(files.file.path, route);
+      					}
+      				});
+              memo = {text: req.body.text, date: req.body.date, route_file: req.body.file};
+      			}
+      		}
+
+          mongoOp.update(data, {$push: {memos: memo}},  { upsert: true }, function(err, user){
+            if(err){
+              res.send(err);
+            } else {
+              //return res.json(user);
+              //It returns user updated
+              mongoOp.findOne({'username': db.username, 'password': db.password},function(err,data){
+                if(err) {
+                  response = {"error" : true,"message" : "Error updating data"};
+                } else {
+                  response = {"error" : false,"message" : data};
+                }
+                res.json(response);
+              });
+            }
+          });
         });
       }
     });
@@ -166,6 +194,34 @@ var appRouter = function(app, mongoOp, http) {
     res.send("Hello World");
   });
 
+  /*
+  Download undefined file
+  */
+  app.get("/file/:idMemo", function(req, res){
+    console.log("GET /file was called. ");
+
+    var options = {hostname: 'localhost',
+    port: '3000',
+    path: '/api/memo/' + req.params.idMemo,
+    method: 'GET'};
+    var req2 = http.request(options, function(res2){
+      var bodyChunks = [];
+      res2.on('data', function(chunk){
+        bodyChunks.push(chunk);
+      });
+      res2.on('end', function(){
+        var body = Buffer.concat(bodyChunks);
+        var json = JSON.parse(body);
+        if(json.error){
+          res.send("Hay problemas");
+        }else{
+          res.sendFile(path + json.message.route_file);
+        }
+      });
+    });
+    req2.end();
+  });
+
   app.get("/login", function(req, res){
     console.log("GET /login was called. ");
 
@@ -207,6 +263,17 @@ var appRouter = function(app, mongoOp, http) {
         }else{
           var aux;
           aux = "Hola "+ json.message.username + "\n\n";
+          //Form to add memos
+          aux = aux + '<form action="/api/memo" enctype="application/x-www-form-urlencoded" '+
+					'method="post">'+
+					'Date*: <input type="date" name="date"/><br/>' +
+					'Text*: <input type="text" name="text"/><br/>' +
+					'File: <input type="file" name="file" multiple="multiple"/><br/>'+
+					'<input type="hidden" name="username" value="'+ req.body.username +'"/>' +
+					'<input type="hidden" name="password" value="'+ req.body.password +'"/>' +
+					'<input type="submit" value="Save note" /></form><br/>\n\n';
+
+          //End
           var memos = json.message.memos;
           aux = aux + '<table>';
 		      aux = aux + '<tr><th>Id</th><th>Date</th><th>Text</th><th>File</th><th>Info</th><th>Delete</th></tr>';
@@ -219,14 +286,59 @@ var appRouter = function(app, mongoOp, http) {
       			aux = aux + '<td>' + memos[i]._id + '</td>';
       			aux = aux + '<td>' + memos[i].date + '</td>';
       			aux = aux + '<td>' + memos[i].text + '</td>';
-      			aux = aux + '<td>' + '<a href="./downloadFile?='+ memos[i]._id  +'">' + memos[i].route_file + '</a>' + '</td>';
-      			aux = aux + '<td>' + '<a href="./showMemo?='+ memos[i]._id  +'">Details</a>' + '</td>';
+      			aux = aux + '<td>' + '<a href="./file/'+ memos[i]._id  +'">' + memos[i].route_file + '</a>' + '</td>';
+      			aux = aux + '<td>' + '<a href="./memo/'+ memos[i]._id  +'">Details</a>' + '</td>';
       			aux = aux + '<td>' + form + '</td>';
       			aux = aux + '</tr>';
           }
           aux = aux + '</table>';
 
           res.send(aux);
+        }
+      });
+    });
+    req2.end();
+  });
+
+  app.get("/memo/:idMemo", function(req, res){
+    console.log("GET /memo was called. ");
+
+    var options = {hostname: 'localhost',
+    port: '3000',
+    path: '/api/memo/' + req.params.idMemo,
+    method: 'GET'};
+
+    var req2 = http.request(options, function(res2){
+      var bodyChunks = [];
+      res2.on('data', function(chunk){
+        bodyChunks.push(chunk);
+      });
+      res2.on('end', function(){
+        var body = Buffer.concat(bodyChunks);
+        var json = JSON.parse(body);
+        if(json.error){
+          res.send("Hay problemas");
+        }else{
+          var memo = json.message;
+          var response = "";
+          var memos = json.message.memos;
+          response = response + '<table>';
+          response = response + '<tr><th>Id</th><th>Date</th><th>Text</th><th>File</th><th>Info</th><th>Delete</th></tr>';
+          var form = '<div><form action="delete/'+memo._id+'" enctype="application/x-www-form-urlencoded" '+
+          	'method="get">'+
+          	'<input type="submit" value="Delete"></input>'+
+          	'</form></div>';
+          response = response + '<tr>';
+          response = response + '<td>' + memo._id + '</td>';
+          response = response + '<td>' + memo.date + '</td>';
+          response = response + '<td>' + memo.text + '</td>';
+          response = response + '<td>' + '<a href="./file/'+ memo._id  +'">' + memo.route_file + '</a>' + '</td>';
+          response = response + '<td>' + '<a href="./'+ memo._id  +'">Details</a>' + '</td>';
+          response = response + '<td>' + form + '</td>';
+          response = response + '</tr>';
+          response = response + '</table>';
+
+          res.send(response);
         }
       });
     });
