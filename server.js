@@ -3,6 +3,9 @@ var app = express();
 var bodyParser = require("body-parser");
 var mongoOp = require("./models/mongo");
 var router = express.Router();
+var fileUpload = require('express-fileupload');
+
+app.use(fileUpload());
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({"extended" : false}));

@@ -1,8 +1,12 @@
 var appRouter = function(app, mongoOp, http) {
   var path = "C:/Users/marco/Documents/GitHub/sisTecWeb-p5/tmp/";
+  var multer  = require('multer');
+  var upload = multer({ dest: path });
+  var fs = require('fs');
+
 
   ////////////////////////////////////////////////
-  ////////////////API
+  ////////////////BD COMUNICATION
   ////////////////////////////////////////////////
 
   /*
@@ -31,8 +35,7 @@ var appRouter = function(app, mongoOp, http) {
 
   /*
   Create user:
-    username
-    password
+  Body: username, password
   */
   app.post("/api/user", function(req, res) {
     console.log("POST /api/user was called. ");
@@ -83,14 +86,10 @@ var appRouter = function(app, mongoOp, http) {
   });
 
   /*
-  Add a memo:
-    username
-    password
-    text
-    date
-    file
+  Add a memo
+  Body: username, password, text, date, file
   */
-  app.post("/api/memo/", function(req, res) {
+  app.post("/api/memo/", upload.single('file'), function(req, res) {
     console.log("POST /api/memo was called. ");
 
     var db = new mongoOp();
@@ -100,52 +99,45 @@ var appRouter = function(app, mongoOp, http) {
     .createHash('sha1')
     .update(req.body.password)
     .digest('base64');
-    mongoOp.findOne({username: req.body.username, password: db.password},function(err,data){
-      // Mongo command to fetch all data from collection.
 
+    //It creates a memo
+    var memo;
+    if (req.file) {
+      //Rename file
+      route = path + req.file.originalname;
+      fs.rename(req.file.path, route, function(error) {
+  			if (error) {
+  				fs.unlink(route);
+  				fs.rename(req.file.path, route);
+  			}
+  		});
+
+      memo = {text: req.body.text, date: req.body.date, route_file: req.file.originalname};
+    }else{
+      memo = {text: req.body.text, date: req.body.date, route_file: ""};
+    }
+
+    //Add a new memo
+    mongoOp.findOne({username: req.body.username, password: db.password},function(err,data){
       if(err) {
         response = {"error" : true,"message" : "Error fetching data"};
         res.json(response);
       } else {
-        var formidable = require("formidable");
-        var fs = require('fs');
-        var form = new formidable.IncomingForm();
-        var memo = {text: req.body.text, date: req.body.date};
-      	form.parse(req, function(error, fields, files) {
-          console.log("llego aqui");
-      		//If there are a file it will save it
-      		var route = "";
-      		if(typeof files.file !== 'undefined'){
-      			if(files.file.name != ''){
-      				route = path + files.file.name;
-      				/* Possible error on Windows systems:
-      				tried to rename to an already existing file */
-      				fs.rename(files.file.path, route, function(error) {
-      					if (error) {
-      						fs.unlink(route);
-      						fs.rename(files.file.path, route);
-      					}
-      				});
-              memo = {text: req.body.text, date: req.body.date, route_file: req.body.file};
-      			}
-      		}
-
-          mongoOp.update(data, {$push: {memos: memo}},  { upsert: true }, function(err, user){
-            if(err){
-              res.send(err);
-            } else {
-              //return res.json(user);
-              //It returns user updated
-              mongoOp.findOne({'username': db.username, 'password': db.password},function(err,data){
-                if(err) {
-                  response = {"error" : true,"message" : "Error updating data"};
-                } else {
-                  response = {"error" : false,"message" : data};
-                }
-                res.json(response);
-              });
-            }
-          });
+        mongoOp.update(data, {$push: {memos: memo}},  { upsert: true }, function(err, user){
+          if(err){
+            res.send(err);
+          } else {
+            //return res.json(user);
+            //It returns user updated
+            mongoOp.findOne({'username': db.username, 'password': db.password},function(err,data){
+              if(err) {
+                response = {"error" : true,"message" : "Error updating data"};
+              } else {
+                response = {"error" : false,"message" : data};
+              }
+              res.json(response);
+            });
+          }
         });
       }
     });
@@ -264,32 +256,32 @@ var appRouter = function(app, mongoOp, http) {
           var aux;
           aux = "Hola "+ json.message.username + "\n\n";
           //Form to add memos
-          aux = aux + '<form action="/api/memo" enctype="application/x-www-form-urlencoded" '+
-					'method="post">'+
-					'Date*: <input type="date" name="date"/><br/>' +
-					'Text*: <input type="text" name="text"/><br/>' +
-					'File: <input type="file" name="file" multiple="multiple"/><br/>'+
-					'<input type="hidden" name="username" value="'+ req.body.username +'"/>' +
-					'<input type="hidden" name="password" value="'+ req.body.password +'"/>' +
-					'<input type="submit" value="Save note" /></form><br/>\n\n';
+          aux = aux + '<form action="/api/memo" enctype="multipart/form-data" '+
+          'method="post">'+
+          'Date*: <input type="date" name="date"/><br/>' +
+          'Text*: <input type="text" name="text"/><br/>' +
+          'File: <input type="file" name="file" multiple="multiple"/><br/>'+
+          '<input type="hidden" name="username" value="'+ req.body.username +'"/>' +
+          '<input type="hidden" name="password" value="'+ req.body.password +'"/>' +
+          '<input type="submit" value="Save note" /></form><br/>\n\n';
 
           //End
           var memos = json.message.memos;
           aux = aux + '<table>';
-		      aux = aux + '<tr><th>Id</th><th>Date</th><th>Text</th><th>File</th><th>Info</th><th>Delete</th></tr>';
+          aux = aux + '<tr><th>Id</th><th>Date</th><th>Text</th><th>File</th><th>Info</th><th>Delete</th></tr>';
           for(var i = 0; i<memos.length; i++){
             var form = '<div><form action="delete/'+memos[i]._id+'" enctype="application/x-www-form-urlencoded" '+
-      				'method="get">'+
-      				'<input type="submit" value="Delete"></input>'+
-      				'</form></div>';
-      			aux = aux + '<tr>';
-      			aux = aux + '<td>' + memos[i]._id + '</td>';
-      			aux = aux + '<td>' + memos[i].date + '</td>';
-      			aux = aux + '<td>' + memos[i].text + '</td>';
-      			aux = aux + '<td>' + '<a href="./file/'+ memos[i]._id  +'">' + memos[i].route_file + '</a>' + '</td>';
-      			aux = aux + '<td>' + '<a href="./memo/'+ memos[i]._id  +'">Details</a>' + '</td>';
-      			aux = aux + '<td>' + form + '</td>';
-      			aux = aux + '</tr>';
+            'method="get">'+
+            '<input type="submit" value="Delete"></input>'+
+            '</form></div>';
+            aux = aux + '<tr>';
+            aux = aux + '<td>' + memos[i]._id + '</td>';
+            aux = aux + '<td>' + memos[i].date + '</td>';
+            aux = aux + '<td>' + memos[i].text + '</td>';
+            aux = aux + '<td>' + '<a href="./file/'+ memos[i]._id  +'">' + memos[i].route_file + '</a>' + '</td>';
+            aux = aux + '<td>' + '<a href="./memo/'+ memos[i]._id  +'">Details</a>' + '</td>';
+            aux = aux + '<td>' + form + '</td>';
+            aux = aux + '</tr>';
           }
           aux = aux + '</table>';
 
@@ -325,14 +317,14 @@ var appRouter = function(app, mongoOp, http) {
           response = response + '<table>';
           response = response + '<tr><th>Id</th><th>Date</th><th>Text</th><th>File</th><th>Info</th><th>Delete</th></tr>';
           var form = '<div><form action="delete/'+memo._id+'" enctype="application/x-www-form-urlencoded" '+
-          	'method="get">'+
-          	'<input type="submit" value="Delete"></input>'+
-          	'</form></div>';
+          'method="get">'+
+          '<input type="submit" value="Delete"></input>'+
+          '</form></div>';
           response = response + '<tr>';
           response = response + '<td>' + memo._id + '</td>';
           response = response + '<td>' + memo.date + '</td>';
           response = response + '<td>' + memo.text + '</td>';
-          response = response + '<td>' + '<a href="./file/'+ memo._id  +'">' + memo.route_file + '</a>' + '</td>';
+          response = response + '<td>' + '<a href="../file/'+ memo._id  +'">' + memo.route_file + '</a>' + '</td>';
           response = response + '<td>' + '<a href="./'+ memo._id  +'">Details</a>' + '</td>';
           response = response + '<td>' + form + '</td>';
           response = response + '</tr>';
@@ -346,35 +338,33 @@ var appRouter = function(app, mongoOp, http) {
   });
 
   app.get("/delete/:idMemo", function(req, res){
-      console.log("GET /delete was called. ");
-      var options = {host: 'localhost',
-        port: 3000,
-        path: '/api/memo/' + req.params.idMemo + '/',
-        method: 'DELETE'
-      };
-      var req2 = http.request(options, function(res2){
-        var bodyChunks = [];
-        res2.on('data', function(chunk){
-          bodyChunks.push(chunk);
-        });
-        res2.on('end', function(){
-          var body = Buffer.concat(bodyChunks);
-          var json = JSON.parse(body);
-          if(json.error){
-            res.send("Hay problemas");
-          }else{
-            console.log(json);
-            res.send("Todo bien");
-          }
-        });
-      });
-      req2.on('error', function(){
-        console.log("error");
-      });
-      req2.end();
+    console.log("GET /delete was called. ");
+    var options = {host: 'localhost',
+    port: 3000,
+    path: '/api/memo/' + req.params.idMemo + '/',
+    method: 'DELETE'
+  };
+  var req2 = http.request(options, function(res2){
+    var bodyChunks = [];
+    res2.on('data', function(chunk){
+      bodyChunks.push(chunk);
+    });
+    res2.on('end', function(){
+      var body = Buffer.concat(bodyChunks);
+      var json = JSON.parse(body);
+      if(json.error){
+        res.send("Hay problemas");
+      }else{
+        console.log(json);
+        res.send("Todo bien");
+      }
+    });
   });
-
-
+  req2.on('error', function(){
+    console.log("error");
+  });
+  req2.end();
+});
 }
 
 module.exports = appRouter;
