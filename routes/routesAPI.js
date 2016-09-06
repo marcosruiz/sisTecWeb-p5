@@ -4,6 +4,8 @@ var appRouter = function(app, mongoOp, http) {
   var upload = multer({ dest: path });
   var fs = require('fs');
 
+  ///////////////USERS///////////////
+
   /*
   Login
   */
@@ -57,6 +59,24 @@ var appRouter = function(app, mongoOp, http) {
   });
 
   /*
+  Show all users with their notes
+  */
+  app.get("/api/allMemo/", function(req, res) {
+    console.log("GET /api/allMemo was called. ");
+    var response = {};
+    mongoOp.find({}, function(err, data){
+      if(err){
+        response = {"error" : true,"message" : "Error fetching data"};
+      }else{
+        response = {"error" : false,"message" : data};
+      }
+      res.json(response);
+    });
+  });
+
+  ///////////////MEMOS///////////////
+
+  /*
   Get a memo
   */
   app.get("/api/memo/:idMemo", function(req, res) {
@@ -75,6 +95,22 @@ var appRouter = function(app, mongoOp, http) {
           }
         }
         response = {"error" : false, "message" : myMemo}
+      }
+      res.json(response);
+    });
+  });
+
+  /*
+  Delete a memo
+  */
+  app.delete("/api/memo/:idMemo", function(req, res) {
+    console.log("DELETE /api/memo was called. ");
+    var response = {};
+    mongoOp.update({}, {$pull: {memos: {_id: req.params.idMemo}}}, function(err, data){
+      if(err){
+        response = {"error" : true,"message" : "Error deleting data"};
+      }else{
+        response = {"error" : false,"message" : data};
       }
       res.json(response);
     });
@@ -135,38 +171,6 @@ var appRouter = function(app, mongoOp, http) {
           }
         });
       }
-    });
-  });
-
-  /*
-  Delete a note
-  */
-  app.delete("/api/memo/:idMemo", function(req, res) {
-    console.log("DELETE /api/memo was called. ");
-    var response = {};
-    mongoOp.update({}, {$pull: {memos: {_id: req.params.idMemo}}}, function(err, data){
-      if(err){
-        response = {"error" : true,"message" : "Error deleting data"};
-      }else{
-        response = {"error" : false,"message" : data};
-      }
-      res.json(response);
-    });
-  });
-
-  /*
-  Show all users with their notes
-  */
-  app.get("/api/allMemo/", function(req, res) {
-    console.log("GET /api/allMemo was called. ");
-    var response = {};
-    mongoOp.find({}, function(err, data){
-      if(err){
-        response = {"error" : true,"message" : "Error fetching data"};
-      }else{
-        response = {"error" : false,"message" : data};
-      }
-      res.json(response);
     });
   });
 

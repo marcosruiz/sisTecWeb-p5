@@ -5,7 +5,7 @@ var appRouter = function(app, http) {
   var fs = require('fs');
 
   /*
-  Form login
+  It sends a form log in and Sing up
   */
   app.get("/", function(req, res){
     console.log("GET / was called. ");
@@ -37,6 +37,9 @@ var appRouter = function(app, http) {
     res.send(body);
   });
 
+  /*
+  It sends a form to create a new memo and a list of all memos of your user
+  */
   app.post("/welcome", function(req, res){
     console.log("POST /welcome was called. ");
     //Llamar a la funcion /api/user/:username/:password
@@ -94,6 +97,9 @@ var appRouter = function(app, http) {
     req2.end();
   });
 
+  /*
+  It sends a memo
+  */
   app.get("/memo/:idMemo", function(req, res){
     console.log("GET /memo was called. ");
 
@@ -139,6 +145,9 @@ var appRouter = function(app, http) {
     req2.end();
   });
 
+  /*
+  It sends if elimination of memo with _id = :idMemo was successful or not
+  */
   app.get("/delete/:idMemo", function(req, res){
     console.log("GET /delete was called. ");
     var options = {host: 'localhost',
